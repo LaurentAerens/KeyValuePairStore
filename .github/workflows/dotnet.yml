@@ -19,7 +19,7 @@ jobs:
       with:
         dotnet-version: 8.0.x   
     - name: Navigate to test project
-      run: cd AerensStoreUnittest
+      run: cd KeyValuePairStoreUnittest
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
