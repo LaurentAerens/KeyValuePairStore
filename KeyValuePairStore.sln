@@ -5,7 +5,7 @@ VisualStudioVersion = 17.9.34701.34
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KeyValuePairStore", "KeyValuePairStore\KeyValuePairStore.csproj", "{982FC670-DA82-43B5-B648-9AFF051AE5AA}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KayValuePairStoreTests", "KeyValuePairStoreUnittest\KayValuePairStoreTests.csproj", "{D7E71028-4060-4C41-8B24-7317BB88CDE5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KeyValuePairStoreTests", "KeyValuePairStoreUnittest\KeyValuePairStoreTests.csproj", "{D7E71028-4060-4C41-8B24-7317BB88CDE5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
