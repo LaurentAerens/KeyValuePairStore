@@ -8,8 +8,10 @@ public class KeyValueStore
 {
     private Dictionary<string, object> store;
     private string filePath;
-    DeltaTime ContinuesStoreTime = new DeltaTime();
-    int cleanUpTime;
+    readonly DeltaTime ContinuesStoreTime = new DeltaTime();
+    readonly int cleanUpTime;
+    private static readonly object mutex = new object();
+
 
 
     /// Represents a key-value store that persists data to a file.
@@ -37,59 +39,63 @@ public class KeyValueStore
         }
         this.filePath = filePath;
 
-        if (File.Exists(filePath))
+        lock (mutex)
         {
-            var content = File.ReadAllText(filePath);
-            var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(content);
-            var settingsjson = JsonConvert.SerializeObject(data["Settings"]);
-            var settings = JsonConvert.DeserializeObject<Dictionary<string, object>>(settingsjson);
-            var storejson = JsonConvert.SerializeObject(data["Store"]);
-            store = JsonConvert.DeserializeObject<Dictionary<string, object>>(storejson);
-            if (!OverwriteSetting)
+            if (File.Exists(filePath))
             {
-                if (settings.ContainsKey("ContinuesStoreTime") && settings.ContainsKey("cleanUpTime"))
-                {
-                    string JsonContinuesStoreTime = JsonConvert.SerializeObject(settings["ContinuesStoreTime"]);
-                    DeltaTime ContinuesStoreTimeSettings = CreateDeltaTimeFromJson(JsonContinuesStoreTime);
+                var content = File.ReadAllText(filePath);
+                var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(content);
+                var settingsjson = JsonConvert.SerializeObject(data["Settings"]);
+                var settings = JsonConvert.DeserializeObject<Dictionary<string, object>>(settingsjson);
+                var storejson = JsonConvert.SerializeObject(data["Store"]);
+                store = JsonConvert.DeserializeObject<Dictionary<string, object>>(storejson);
 
-                    if (ContinuesStoreTime.IsOff)
-                    {
-                        ContinuesStoreTime = ContinuesStoreTimeSettings;
-                    }
-                    else
-                    {
-                        if (ContinuesStoreTime != ContinuesStoreTimeSettings)
-                        {
-                            MissmatchSettings = true;
-                        }
-                    }
-                    if (cleanUpTime == 0)
-                    {
-                        cleanUpTime = (int)(long)settings["cleanUpTime"];
-                    }
-                    else
-                    {
-                        if (cleanUpTime != (int)(long)settings["cleanUpTime"])
-                        {
-                            MissmatchSettings = true;
-                        }
-                    }
-                }
-                else
+                if (!OverwriteSetting)
                 {
-                    MissmatchSettings = true;
+                    if (settings.ContainsKey("ContinuesStoreTime") && settings.ContainsKey("cleanUpTime"))
+                    {
+                        string JsonContinuesStoreTime = JsonConvert.SerializeObject(settings["ContinuesStoreTime"]);
+                        DeltaTime ContinuesStoreTimeSettings = CreateDeltaTimeFromJson(JsonContinuesStoreTime);
+
+                        if (ContinuesStoreTime.IsOff)
+                        {
+                            ContinuesStoreTime = ContinuesStoreTimeSettings;
+                        }
+                        else
+                        {
+                            if (ContinuesStoreTime != ContinuesStoreTimeSettings)
+                            {
+                                MissmatchSettings = true;
+                            }
+                        }
+                        if (cleanUpTime == 0)
+                        {
+                            cleanUpTime = (int)(long)settings["cleanUpTime"];
+                        }
+                        else
+                        {
+                            if (cleanUpTime != (int)(long)settings["cleanUpTime"])
+                            {
+                                MissmatchSettings = true;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        MissmatchSettings = true;
+                    }
                 }
             }
-        }
-        else
-        {
-            store = new Dictionary<string, object>();
-        }
-        Save();
-        AppDomain.CurrentDomain.ProcessExit += (s, e) => RemoveOldKeys();
-        if (MissmatchSettings)
-        {
-            throw new ArgumentException("The settings in the keyValueStore en the contructor do not match, Constructor onces are taken: This might brake stuff.");
+            else
+            {
+                store = new Dictionary<string, object>();
+            }
+            Save();
+            AppDomain.CurrentDomain.ProcessExit += (s, e) => RemoveOldKeys();
+            if (MissmatchSettings)
+            {
+                throw new ArgumentException("The settings in the keyValueStore en the contructor do not match, Constructor onces are taken: This might brake stuff.");
+            }
         }
     }
     private DeltaTime CreateDeltaTimeFromJson(string json)
@@ -105,29 +111,47 @@ public class KeyValueStore
     }
     private void Save()
     {
-        var settings = new Dictionary<string, object>
+        lock(mutex)
         {
-            { "ContinuesStoreTime", ContinuesStoreTime },
-            { "cleanUpTime", cleanUpTime }
-        };
+            var settings = new Dictionary<string, object>
+            {
+                { "ContinuesStoreTime", ContinuesStoreTime },
+                { "cleanUpTime", cleanUpTime }
+            };
 
-        var data = new Dictionary<string, object>
+            var data = new Dictionary<string, object>
+            {
+                { "Settings", settings },
+                { "Store", store }
+            };
+
+            var content = JsonConvert.SerializeObject(data);
+            File.WriteAllText(filePath, content);
+        }
+    }
+    private void updateStore()
+    {
+        lock (mutex)
         {
-            { "Settings", settings },
-            { "Store", store }
-        };
-
-        var content = JsonConvert.SerializeObject(data);
-        File.WriteAllText(filePath, content);
+            var content = File.ReadAllText(filePath);
+            var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(content);
+            var storejson = JsonConvert.SerializeObject(data["Store"]);
+            store = JsonConvert.DeserializeObject<Dictionary<string, object>>(storejson);
+        }
     }
 
     /// <summary>
     /// Retrieves the keys from the key-value store.
     /// </summary>
     /// <param name="WithDateTime">Indicates whether to include the date and time in the keys.</param>
+    /// <param name="update">Indicates whether to update the store before retrieving the keys.</param>
     /// <returns>A list of keys.</returns>
-    public List<string> GetKeys(bool WithDateTime = false)
+    public List<string> GetKeys(bool WithDateTime = false, bool update = true)
     {
+        if (update)
+        {
+            updateStore();
+        }
         int[] timeToKeep = ContinuesStoreTime.GetTimeValues();
         if (WithDateTime || ContinuesStoreTime.IsOff)
         {
@@ -238,9 +262,14 @@ public class KeyValueStore
     /// Retrieves the versions of keys that match the specified key name.
     /// </summary>
     /// <param name="keyName">The name of the key.</param>
+    /// <param name="update">Indicates whether to update the store before retrieving the key versions.</param>
     /// <returns>A dictionary containing Iterations and Date for the key.</returns>
-    public Dictionary<int, string> GetKeyVersions(string keyName)
+    public Dictionary<int, string> GetKeyVersions(string keyName, bool update = true)
     {
+        if (update)
+        {
+            updateStore();
+        }
         if (ContinuesStoreTime.IsOff)
         {
             return null;
@@ -308,10 +337,15 @@ public class KeyValueStore
 
     /// <summary>
     /// Retrieves the keys and their corresponding versions from the store.
+    /// <param name="update">Indicates whether to update the store before retrieving the keys and their versions.</param>
     /// </summary>
     /// <returns>A dictionary containing the keys and their versions.</returns>
-    public Dictionary<string, List<string>> GetKeysVersions()
+    public Dictionary<string, List<string>> GetKeysVersions(bool update = true)
     {
+        if (update)
+        {
+            updateStore();
+        }
         if (ContinuesStoreTime.IsOff)
         {
             Dictionary<string, List<string>> keysNoVersions = new Dictionary<string, List<string>>();
@@ -411,10 +445,15 @@ public class KeyValueStore
     }
     /// <summary>
     /// Retrieves the keys and their corresponding iterations based on the time values set for the store.
+    /// <param name="update">Indicates whether to update the store before retrieving the keys and iterations.</param>
     /// </summary>
     /// <returns>A dictionary containing the keys and their iterations.</returns>
-    public Dictionary<string, List<int>> GetKeysIterations()
+    public Dictionary<string, List<int>> GetKeysIterations(bool update = true)
     {
+        if (update)
+        {
+            updateStore();
+        }
         if(ContinuesStoreTime.IsOff)
         {
             return null;
@@ -550,11 +589,16 @@ public class KeyValueStore
     /// <param name="iterationsAgo">The number of iterations ago to search for the key.</param>
     /// <param name="lookupDate">The lookup date get the keyValue on a certain date</param>
     /// <param name="straightLookup">Removes all DateTime processing and look the key as is</param>
+    /// <param name="update">Indicates whether to update the store before retrieving the value.</param>
     /// <returns>
     /// The value associated with the specified key, or null if the key is not found.
     /// </returns>
-    public object Get(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false)
+    public object Get(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false, bool update = true)
     {
+        if (update)
+        {
+            updateStore();
+        }
         try
         {
             object result = null;
@@ -601,12 +645,13 @@ public class KeyValueStore
     /// </param>
     ///<param name="lookupDate">The lookup date get the keyValue on a certain date</param>
     /// <param name="straightLookup">Removes all DateTime processing and look the key as is</param>
+    /// <param name="update">Indicates whether to update the store before retrieving the value.</param>
     /// <returns>The value associated with the specified key as a string, or empty string if the key does not exist or the value is not a string.</returns>
     /// <exception cref="KeyNotFoundException">Thrown when the key does not exist in the store and iterationsAgo != 0.</exception>
     /// <exception cref="InvalidCastException">Thrown when the value associated with the key is not a string.</exception>
-    public string GetString(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false)
+    public string GetString(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false, bool update = true)
     {
-        var value = Get(key, iterationsAgo, lookupDate, straightLookup);
+        var value = Get(key, iterationsAgo, lookupDate, straightLookup, update);
         if (value == null)
         {
             return string.Empty;
@@ -642,12 +687,13 @@ public class KeyValueStore
     /// </param>
     /// <param name="lookupDate">The lookup date get the keyValue on a certain date</param>
     /// <param name="straightLookup">Removes all DateTime processing and look the key as is</param>
+    /// <param name="update">Indicates whether to update the store before retrieving the value.</param>
     /// <returns>The value associated with the specified key as a integer, or 0 if the key does not exist or the value is not a integer.</returns>
     /// <exception cref="KeyNotFoundException">Thrown when the key does not exist in the store and iterationsAgo != 0.</exception>
     /// <exception cref="InvalidCastException">Thrown when the value associated with the key is not a integer.</exception>
-    public int GetInt(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false)
+    public int GetInt(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false, bool update = true)
     {
-        var value = Get(key, iterationsAgo, lookupDate, straightLookup);
+        var value = Get(key, iterationsAgo, lookupDate, straightLookup, update);
         if (value == null)
         {
             return 0;
@@ -673,6 +719,33 @@ public class KeyValueStore
 
         }
     }
+    /// <summary>
+    /// Increases the value of the specified key by the specified amount.
+    /// </summary>
+    /// <param name="key">The key of the value to increase.</param>
+    /// <param name="increaseAmount">The amount to increase the value by.</param>
+    public void IncreaseInt(string key, int increaseAmount)
+    {
+        updateStore();
+        int value = GetInt(key);
+        value += increaseAmount;
+        SetInt(key, value);
+    }
+    /// <summary>
+    /// When you just want to sum up values you can use this to do it in a threat safe way.
+    /// It calculates the difference between your last known value and the given value and adds that to the current value in the json.
+    /// </summary>
+    /// <param name="key">The key of the value to set.</param>
+    /// <param name="value">The new value to set.</param>
+    public void SetAccumulatingInt (string key, int value)
+    {
+        int oldvalue = GetInt(key);
+        updateStore();
+        int newValue = GetInt(key);
+        int increaseAmount = value - oldvalue;
+        newValue += increaseAmount;
+        SetInt(key, newValue);
+    }
 
     /// <summary>
     /// Sets the value of the specified key as a double.
@@ -695,12 +768,13 @@ public class KeyValueStore
     /// </param>
     /// <param name="lookupDate">The lookup date get the keyValue on a certain date</param>
     /// <param name="straightLookup">Removes all DateTime processing and look the key as is</param>
+    /// <param name="update">Indicates whether to update the store before retrieving the value.</param>
     /// <returns>The value associated with the specified key as a double, or 0 if the key does not exist or the value is not a double.</returns>
     /// <exception cref="KeyNotFoundException">Thrown when the key does not exist in the store and iterationsAgo != 0.</exception>
     /// <exception cref="InvalidCastException">Thrown when the value associated with the key is not a double.</exception>
-    public double GetDouble(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false)
+    public double GetDouble(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false, bool update = true)
     {
-        var value = Get(key, iterationsAgo, lookupDate, straightLookup);
+        var value = Get(key, iterationsAgo, lookupDate, straightLookup, update);
         if (value == null)
         {
             return 0;
@@ -714,7 +788,34 @@ public class KeyValueStore
             throw new InvalidCastException($"The value for key '{key}' is not of type 'double'.");
         }
     }
+/// <summary>
+/// Increases the value of the specified key by the specified amount.
+/// </summary>
+/// <param name="key">The key of the value to increase.</param>
+/// <param name="increaseAmount">The amount to increase the value by.</param>
+public void IncreaseDouble(string key, double increaseAmount)
+{
+    updateStore();
+    double value = GetDouble(key);
+    value += increaseAmount;
+    SetDouble(key, value);
+}
 
+/// <summary>
+/// When you just want to sum up values you can use this to do it in a threat safe way.
+/// It calculates the difference between your last known value and the given value and adds that to the current value in the json.
+/// </summary>
+/// <param name="key">The key of the value to set.</param>
+/// <param name="value">The new value to set.</param>
+public void SetAccumulatingDouble(string key, double value)
+{
+    double oldvalue = GetDouble(key);
+    updateStore();
+    double newValue = GetDouble(key);
+    double increaseAmount = value - oldvalue;
+    newValue += increaseAmount;
+    SetDouble(key, newValue);
+}
     /// <summary>
     /// Sets the value of the specified key as a long.
     /// </summary>
@@ -736,12 +837,13 @@ public class KeyValueStore
     /// </param>
     /// <param name="lookupDate">The lookup date get the keyValue on a certain date</param>
     /// <param name="straightLookup">Removes all DateTime processing and look the key as is</param>
+    /// <param name="update">Indicates whether to update the store before retrieving the value.</param>
     /// <returns>The value associated with the specified key as a long, or 0 if the key does not exist or the value is not a long.</returns>
     /// <exception cref="KeyNotFoundException">Thrown when the key does not exist in the store and iterationsAgo != 0.</exception>
     /// <exception cref="InvalidCastException">Thrown when the value associated with the key is not a long.</exception>
-    public long GetLong(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false)
+    public long GetLong(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false, bool update = true)
     {
-        var value = Get(key, iterationsAgo, lookupDate, straightLookup);
+        var value = Get(key, iterationsAgo, lookupDate, straightLookup, update);
         if (value == null)
         {
             return 0;
@@ -754,6 +856,34 @@ public class KeyValueStore
         {
             throw new InvalidCastException($"The value for key '{key}' is not of type 'long'.");
         }
+    }
+    /// <summary>
+    /// Increases the value of the specified key by the specified amount.
+    /// </summary>
+    /// <param name="key">The key of the value to increase.</param>
+    /// <param name="increaseAmount">The amount to increase the value by.</param>
+    public void IncreaseLong(string key, long increaseAmount)
+    {
+        updateStore();
+        long value = GetLong(key);
+        value += increaseAmount;
+        SetLong(key, value);
+    }
+
+    /// <summary>
+    /// When you just want to sum up values you can use this to do it in a threat safe way.
+    /// It calculates the difference between your last known value and the given value and adds that to the current value in the json.
+    /// </summary>
+    /// <param name="key">The key of the value to set.</param>
+    /// <param name="value">The new value to set.</param>
+    public void SetAccumulatingLong(string key, long value)
+    {
+        long oldvalue = GetLong(key);
+        updateStore();
+        long newValue = GetLong(key);
+        long increaseAmount = value - oldvalue;
+        newValue += increaseAmount;
+        SetLong(key, newValue);
     }
 
     /// <summary>
@@ -777,12 +907,13 @@ public class KeyValueStore
     /// </param>
     /// <param name="lookupDate">The lookup date get the keyValue on a certain date</param>
     /// <param name="straightLookup">Removes all DateTime processing and look the key as is</param>
+    /// <param name="update">Indicates whether to update the store before retrieving the value.</param>
     /// <returns>The value associated with the specified key as a char, or '\0' if the key does not exist or the value is not a char.</returns>
     /// <exception cref="KeyNotFoundException">Thrown when the key does not exist in the store and iterationsAgo != 0.</exception>
     /// <exception cref="InvalidCastException">Thrown when the value associated with the key is not a char.</exception>
-    public char GetChar(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false)
+    public char GetChar(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false, bool update = true)
     {
-        var value = Get(key, iterationsAgo, lookupDate, straightLookup);
+        var value = Get(key, iterationsAgo, lookupDate, straightLookup, update);
         if (value == null)
         {
             return '\0';
@@ -833,12 +964,13 @@ public class KeyValueStore
     /// </param>
     /// <param name="lookupDate">The lookup date get the keyValue on a certain date</param>
     /// <param name="straightLookup">Removes all DateTime processing and look the key as is</param>
+    /// <param name="update">Indicates whether to update the store before retrieving the value.</param>
     /// <returns>The value associated with the specified key as a bool, or false if the key does not exist or the value is not a bool.</returns>
     /// <exception cref="KeyNotFoundException">Thrown when the key does not exist in the store and iterationsAgo != 0.</exception>
     /// <exception cref="InvalidCastException">Thrown when the value associated with the key is not a bool.</exception>
-    public bool GetBool(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false)
+    public bool GetBool(string key, int iterationsAgo = 0, DateTime lookupDate = default, bool straightLookup = false, bool update = true)
     {
-        var value = Get(key, iterationsAgo, lookupDate, straightLookup);
+        var value = Get(key, iterationsAgo, lookupDate, straightLookup, update);
         if (value == null)
         {
             return false;
@@ -1072,6 +1204,4 @@ public class KeyValueStore
         return (minLenght, minDate, mode);
 
     }
-
-
 }
