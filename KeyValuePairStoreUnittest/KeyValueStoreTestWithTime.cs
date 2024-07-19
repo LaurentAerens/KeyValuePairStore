@@ -1,10 +1,4 @@
-﻿using Moq;
-using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using Newtonsoft.Json;
 
 namespace AerensStoreTest
 {
@@ -132,7 +126,7 @@ namespace AerensStoreTest
         [Test]
         public void Get_WhenOlderMonthIsntWithinDeltaTimeHour_ReturnsNull()
         {
-            string date = _now.AddHours(-5).ToString("yyyyMMDDHH");
+            string date = _now.AddHours(-5).ToString("yyyyMMddHH");
             string value = "testValue";
             CreateNewStore(date, value, path, new DeltaTime(hours: 3));
             var result = _store.Get(testKey);
@@ -141,7 +135,7 @@ namespace AerensStoreTest
         [Test]
         public void Set_OverwritesKeyWithinDeltaTimeHour_SetsValueForKey()
         {
-            string date = _now.AddHours(-1).ToString("yyyyMMDDHH");
+            string date = _now.AddHours(-1).ToString("yyyyMMddHH");
             string wrongValue = "OldValue";
             CreateNewStore(date, wrongValue, path, new DeltaTime(hours: 3));
             string correctValue = "CorrectValue";
@@ -430,7 +424,24 @@ namespace AerensStoreTest
             Assert.That(keysIterations.Contains(0), Is.True);
             Assert.That(keysIterations.Contains(2), Is.False);
         }
-
+        [Test]
+        public void SetKey_WithDateTime_KeyAdditionIsCorrect()
+        {
+            DeltaTime deltaTime1hour = new DeltaTime(hours: 1);
+            KeyValueStore keyValueStore = new KeyValueStore(path, deltaTime1hour, OverwriteSetting: true);
+            string keyName = "TestKey";
+            string value = "TestValue";
+            keyValueStore.Set(keyName, value);
+            // read the json and get the key
+            string json = File.ReadAllText(path);
+            var store = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
+            var jsonStore = JsonConvert.SerializeObject(store["Store"]);
+            var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonStore);
+            string key = data.Keys.First();
+            // check that key wihtout keyName is a number
+            Assert.That(int.TryParse(key.Replace(keyName, ""), out int result), Is.True);
+            Assert.That(key, Is.EqualTo(keyName + DateTime.Now.ToString("yyyyMMddHH")));
+        }
         private void CreateNewStore(string date, object value, string path, DeltaTime deltaTime)
         {
 
