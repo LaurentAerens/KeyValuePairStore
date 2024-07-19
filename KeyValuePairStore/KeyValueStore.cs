@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Data;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Xml.XPath;
 using Newtonsoft.Json;
@@ -868,14 +869,14 @@ public class KeyValueStore
         {
             for (int i = 0; i < timeToKeep[0]; i++)
             {
-                keyNames.Add(key + lookupDate.AddHours(-i - iterationsAgo * timeToKeep[0]).ToString("yyyyMMDDHH"));
+                keyNames.Add(key + lookupDate.AddHours(-i - iterationsAgo * timeToKeep[0]).ToString("yyyyMMddHH"));
             }
         }
         else if (timeToKeep[1] != 0)
         {
             for (int i = 0; i < timeToKeep[1]; i++)
             {
-                keyNames.Add(key + lookupDate.AddDays(-i - iterationsAgo * timeToKeep[1]).ToString("yyyyMMDD"));
+                keyNames.Add(key + lookupDate.AddDays(-i - iterationsAgo * timeToKeep[1]).ToString("yyyyMMdd"));
             }
         }
         else if (timeToKeep[2] != 0)
@@ -907,11 +908,11 @@ public class KeyValueStore
 
         if (timeToKeep[0] != 0)
         {
-            keyName = key + DateTime.Now.ToString("yyyyMMDDHH");
+            keyName = key + DateTime.Now.ToString("yyyyMMddHH");
         }
         else if (timeToKeep[1] != 0)
         {
-            keyName = key + DateTime.Now.ToString("yyyyMMDD");
+            keyName = key + DateTime.Now.ToString("yyyyMMdd");
         }
         else if (timeToKeep[2] != 0)
         {
@@ -934,12 +935,12 @@ public class KeyValueStore
         int[] timeToKeep = ContinuesStoreTime.GetTimeValues();
         if (timeToKeep[0] != 0)
         {
-            int currentDate = int.Parse(DateTime.Now.ToString("yyyyMMDDHH"));
+            int currentDate = int.Parse(DateTime.Now.ToString("yyyyMMddHH"));
             return (currentDate - keyDate) / timeToKeep[0];
         }
         else if (timeToKeep[1] != 0)
         {
-            int currentDate = int.Parse(DateTime.Now.ToString("yyyyMMDD"));
+            int currentDate = int.Parse(DateTime.Now.ToString("yyyyMMdd"));
             return (currentDate - keyDate) / timeToKeep[1];
         }
         else if (timeToKeep[2] != 0)

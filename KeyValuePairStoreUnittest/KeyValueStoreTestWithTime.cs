@@ -132,7 +132,7 @@ namespace AerensStoreTest
         [Test]
         public void Get_WhenOlderMonthIsntWithinDeltaTimeHour_ReturnsNull()
         {
-            string date = _now.AddHours(-5).ToString("yyyyMMDDHH");
+            string date = _now.AddHours(-5).ToString("yyyyMMddHH");
             string value = "testValue";
             CreateNewStore(date, value, path, new DeltaTime(hours: 3));
             var result = _store.Get(testKey);
@@ -141,7 +141,7 @@ namespace AerensStoreTest
         [Test]
         public void Set_OverwritesKeyWithinDeltaTimeHour_SetsValueForKey()
         {
-            string date = _now.AddHours(-1).ToString("yyyyMMDDHH");
+            string date = _now.AddHours(-1).ToString("yyyyMMddHH");
             string wrongValue = "OldValue";
             CreateNewStore(date, wrongValue, path, new DeltaTime(hours: 3));
             string correctValue = "CorrectValue";
